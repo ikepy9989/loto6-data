@@ -57,9 +57,6 @@ try {
   const detailBuffer = await detailResponse.arrayBuffer();
   const detailCsv = decoder.decode(detailBuffer);
 
-  console.log('\n========== 詳細CSV ==========\n');
-  console.log(detailCsv);
-
   // ==============================
   // ④ CSVを行・列に分解
   // ==============================
@@ -81,7 +78,6 @@ try {
     drawInfo[0].match(/第(\d+)回/)[1]
   );
 
-  // 令和8年9月10日 → 2026-09-10
   function parseJapaneseDate(text) {
     const match = text.match(
       /令和(\d+)年(\d+)月(\d+)日/
@@ -164,21 +160,35 @@ try {
     sales_amount: salesAmount,
   };
 
+  // ==============================
+  // ⑩ 回号別JSONとして保存
+  // ==============================
 
-// ==============================
-// ⑩ JSONファイルとして保存
-// ==============================
+  const outputPath = `./data/${drawNumber}.json`;
 
-const outputPath = `./data/${drawNumber}.json`;
+  await writeFile(
+    outputPath,
+    JSON.stringify(result, null, 2),
+    'utf8'
+  );
 
-await writeFile(
-  outputPath,
-  JSON.stringify(result, null, 2),
-  'utf8'
-);
+  console.log('\nJSONファイルを保存しました:');
+  console.log(outputPath);
 
-console.log('\nJSONファイルを保存しました:');
-console.log(outputPath);
+  // ==============================
+  // ⑪ 最新結果JSONとして保存
+  // ==============================
+
+  const latestOutputPath = './data/latest.json';
+
+  await writeFile(
+    latestOutputPath,
+    JSON.stringify(result, null, 2),
+    'utf8'
+  );
+
+  console.log('最新結果JSONを保存しました:');
+  console.log(latestOutputPath);
 
 } catch (error) {
   console.error('error:', error);
