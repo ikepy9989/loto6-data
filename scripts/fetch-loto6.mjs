@@ -1,106 +1,71 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const indexUrl =
   'https://www.mizuhobank.co.jp/retail/takarakuji/loto/loto6/csv/loto6.csv';
 
-try {
-  // ==============================
-  // ① 一覧CSVを取得
-  // ==============================
+const baseUrl =
+  'https://www.mizuhobank.co.jp/retail/takarakuji/loto/loto6/csv';
 
-  const indexResponse = await fetch(indexUrl);
+const decoder = new TextDecoder('shift_jis');
 
-  if (!indexResponse.ok) {
-    throw new Error(
-      `一覧CSV取得失敗: ${indexResponse.status} ${indexResponse.statusText}`
-    );
+function parseJapaneseDate(text) {
+  const match = text.match(
+    /令和(\d+)年(\d+)月(\d+)日/
+  );
+
+  if (!match) {
+    throw new Error(`日付を解析できません: ${text}`);
   }
 
-  const indexBuffer = await indexResponse.arrayBuffer();
-  const decoder = new TextDecoder('shift_jis');
-  const indexCsv = decoder.decode(indexBuffer);
+  const year = Number(match[1]) + 2018;
+  const month = String(Number(match[2])).padStart(2, '0');
+  const day = String(Number(match[3])).padStart(2, '0');
 
-  // 最新回号を取得
-  const latestMatch = indexCsv.match(/第(\d+)回ロト６/);
+  return `${year}-${month}-${day}`;
+}
 
-  if (!latestMatch) {
-    throw new Error('最新回号を取得できませんでした');
+function parsePrize(row) {
+  if (row[1] === '該当なし') {
+    return 0;
   }
 
-  const latestDrawNumber = Number(latestMatch[1]);
-  const latestDrawNumberText =
-    String(latestDrawNumber).padStart(4, '0');
+  return Number(
+    row[2].replace('円', '').replace(/,/g, '')
+  );
+}
 
-  console.log('latest draw number:', latestDrawNumber);
-
-  // ==============================
-  // ② 詳細CSVのURLを生成
-  // ==============================
+async function fetchDrawResult(drawNumber) {
+  const drawNumberText =
+    String(drawNumber).padStart(4, '0');
 
   const detailUrl =
-    `https://www.mizuhobank.co.jp/retail/takarakuji/loto/loto6/csv/A102${latestDrawNumberText}.CSV`;
+    `${baseUrl}/A102${drawNumberText}.CSV`;
 
-  console.log('detail url:', detailUrl);
+  const response = await fetch(detailUrl);
 
-  // ==============================
-  // ③ 詳細CSVを取得
-  // ==============================
-
-  const detailResponse = await fetch(detailUrl);
-
-  if (!detailResponse.ok) {
+  if (!response.ok) {
     throw new Error(
-      `詳細CSV取得失敗: ${detailResponse.status} ${detailResponse.statusText}`
+      `第${drawNumber}回の詳細CSV取得失敗: ${response.status}`
     );
   }
 
-  const detailBuffer = await detailResponse.arrayBuffer();
-  const detailCsv = decoder.decode(detailBuffer);
+  const buffer = await response.arrayBuffer();
+  const csv = decoder.decode(buffer);
 
-  // ==============================
-  // ④ CSVを行・列に分解
-  // ==============================
-
-  const lines = detailCsv
+  const lines = csv
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '');
 
   const rows = lines.map((line) => line.split(','));
 
-  // ==============================
-  // ⑤ 抽せん情報
-  // ==============================
-
   const drawInfo = rows[1];
 
-  const drawNumber = Number(
+  const actualDrawNumber = Number(
     drawInfo[0].match(/第(\d+)回/)[1]
   );
 
-  function parseJapaneseDate(text) {
-    const match = text.match(
-      /令和(\d+)年(\d+)月(\d+)日/
-    );
-
-    if (!match) {
-      throw new Error(
-        `日付を解析できません: ${text}`
-      );
-    }
-
-    const year = Number(match[1]) + 2018;
-    const month = String(Number(match[2])).padStart(2, '0');
-    const day = String(Number(match[3])).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-  }
-
   const drawDate = parseJapaneseDate(drawInfo[2]);
-
-  // ==============================
-  // ⑥ 本数字・ボーナス数字
-  // ==============================
 
   const numberInfo = rows[3];
 
@@ -110,44 +75,22 @@ try {
 
   const bonusNumber = Number(numberInfo[8]);
 
-  // ==============================
-  // ⑦ 各等の賞金
-  // ==============================
-
-  function parsePrize(row) {
-    if (row[1] === '該当なし') {
-      return 0;
-    }
-
-    return Number(
-      row[2].replace('円', '')
-    );
-  }
-
   const prize1 = parsePrize(rows[4]);
   const prize2 = parsePrize(rows[5]);
   const prize3 = parsePrize(rows[6]);
   const prize4 = parsePrize(rows[7]);
   const prize5 = parsePrize(rows[8]);
 
-  // ==============================
-  // ⑧ キャリーオーバー・販売実績額
-  // ==============================
-
   const carryOver = Number(
-    rows[9][1].replace('円', '')
+    rows[9][1].replace('円', '').replace(/,/g, '')
   );
 
   const salesAmount = Number(
-    rows[10][1].replace('円', '')
+    rows[10][1].replace('円', '').replace(/,/g, '')
   );
 
-  // ==============================
-  // ⑨ 最終結果
-  // ==============================
-
-  const result = {
-    draw_number: drawNumber,
+  return {
+    draw_number: actualDrawNumber,
     draw_date: drawDate,
     winning_numbers: winningNumbers,
     bonus_number: bonusNumber,
@@ -159,37 +102,89 @@ try {
     carry_over: carryOver,
     sales_amount: salesAmount,
   };
+}
 
-  // ==============================
-  // ⑩ 回号別JSONとして保存
-  // ==============================
+try {
+  await mkdir('./data', { recursive: true });
 
-  const outputPath = `./data/${drawNumber}.json`;
+  console.log('一覧CSVを取得中...');
+
+  const indexResponse = await fetch(indexUrl);
+
+  if (!indexResponse.ok) {
+    throw new Error(
+      `一覧CSV取得失敗: ${indexResponse.status} ${indexResponse.statusText}`
+    );
+  }
+
+  const indexBuffer = await indexResponse.arrayBuffer();
+  const indexCsv = decoder.decode(indexBuffer);
+
+  const drawNumbers = [
+    ...indexCsv.matchAll(/第(\d+)回ロト６/g),
+  ].map((match) => Number(match[1]));
+
+  if (drawNumbers.length === 0) {
+    throw new Error('回号を取得できませんでした');
+  }
+
+  const uniqueDrawNumbers = [
+    ...new Set(drawNumbers),
+  ].sort((a, b) => a - b);
+
+  console.log(
+    `取得対象: ${uniqueDrawNumbers.length}回`
+  );
+
+  const results = [];
+
+  for (const drawNumber of uniqueDrawNumbers) {
+    try {
+      console.log(`取得中: 第${drawNumber}回`);
+
+      const result = await fetchDrawResult(drawNumber);
+
+      results.push(result);
+    } catch (error) {
+      console.error(
+        `第${drawNumber}回の取得に失敗:`,
+        error
+      );
+    }
+  }
+
+  results.sort(
+    (a, b) => a.draw_number - b.draw_number
+  );
 
   await writeFile(
-    outputPath,
-    JSON.stringify(result, null, 2),
+    './data/all.json',
+    JSON.stringify(results, null, 2),
     'utf8'
   );
 
-  console.log('\nJSONファイルを保存しました:');
-  console.log(outputPath);
-
-  // ==============================
-  // ⑪ 最新結果JSONとして保存
-  // ==============================
-
-  const latestOutputPath = './data/latest.json';
+  const latestResult =
+    results[results.length - 1];
 
   await writeFile(
-    latestOutputPath,
-    JSON.stringify(result, null, 2),
+    './data/latest.json',
+    JSON.stringify(latestResult, null, 2),
     'utf8'
   );
 
-  console.log('最新結果JSONを保存しました:');
-  console.log(latestOutputPath);
+  console.log(
+    `\n過去${results.length}回の結果を保存しました。`
+  );
+
+  console.log(
+    '保存先: ./data/all.json'
+  );
+
+  console.log(
+    `最新回: 第${latestResult.draw_number}回`
+  );
 
 } catch (error) {
   console.error('error:', error);
+  process.exitCode = 1;
 }

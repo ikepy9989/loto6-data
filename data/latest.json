@@ -1,20 +1,20 @@
 {
-  "draw_number": 2136,
-  "draw_date": "2026-09-10",
+  "draw_number": 2137,
+  "draw_date": "2026-09-14",
   "winning_numbers": [
-    6,
-    7,
-    33,
-    37,
-    41,
-    43
+    4,
+    8,
+    10,
+    25,
+    28,
+    33
   ],
-  "bonus_number": 42,
-  "prize_1": 0,
-  "prize_2": 37945900,
-  "prize_3": 505900,
-  "prize_4": 8900,
+  "bonus_number": 9,
+  "prize_1": 370144100,
+  "prize_2": 6387600,
+  "prize_3": 227400,
+  "prize_4": 5300,
   "prize_5": 1000,
-  "carry_over": 484790869,
-  "sales_amount": 1487473000
+  "carry_over": 0,
+  "sales_amount": 1654510800
 }
